@@ -1,8 +1,11 @@
 package com.example.routes
 
 import com.example.model.CreateUserRequest
+import com.example.model.ErrorResponse
 import com.example.model.User
+import com.example.model.UserResponse
 import com.example.model.Users
+import com.example.model.UsersPageResponse
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -11,6 +14,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insertAndGetId
+import org.jetbrains.exposed.sql.limit
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -21,23 +25,48 @@ fun Routing.configureUserRoutes(database: Database) {
     }
 
     get("/users") {
-        val users = newSuspendedTransaction(db = database) {
-            Users.selectAll().map { row ->
-                User(
-                    id = row[Users.id].value,
-                    name = row[Users.name],
-                    email = row[Users.email]
-                )
-            }
+        val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+        val size = call.request.queryParameters["size"]?.toIntOrNull() ?: 20
+        if (page < 1 || size < 1) {
+            call.respond(
+                io.ktor.http.HttpStatusCode.BadRequest,
+                ErrorResponse(error = "page and size must be positive integers")
+            )
+            return@get
         }
 
-        call.respond(users)
+        val offset = (page - 1L) * size
+        val (users, total) = newSuspendedTransaction(db = database) {
+            val totalCount = Users.selectAll().count()
+            val pageUsers = Users.selectAll()
+                .limit(size, offset)
+                .map { row ->
+                    User(
+                        id = row[Users.id].value,
+                        name = row[Users.name],
+                        email = row[Users.email]
+                    )
+                }
+            pageUsers to totalCount
+        }
+
+        call.respond(
+            UsersPageResponse(
+                users = users,
+                page = page,
+                size = size,
+                total = total
+            )
+        )
     }
 
     get("/users/{id}") {
         val id = call.parameters["id"]?.toIntOrNull()
         if (id == null) {
-            call.respond(io.ktor.http.HttpStatusCode.BadRequest, mapOf("error" to "Invalid ID"))
+            call.respond(
+                io.ktor.http.HttpStatusCode.BadRequest,
+                ErrorResponse(error = "Invalid ID")
+            )
             return@get
         }
 
@@ -54,9 +83,12 @@ fun Routing.configureUserRoutes(database: Database) {
         }
 
         if (user != null) {
-            call.respond(user)
+            call.respond(UserResponse(user))
         } else {
-            call.respond(io.ktor.http.HttpStatusCode.NotFound, mapOf("error" to "User not found"))
+            call.respond(
+                io.ktor.http.HttpStatusCode.NotFound,
+                ErrorResponse(error = "User not found")
+            )
         }
     }
 
@@ -72,14 +104,17 @@ fun Routing.configureUserRoutes(database: Database) {
 
         call.respond(
             io.ktor.http.HttpStatusCode.Created,
-            User(id = newUserId, name = request.name, email = request.email)
+            UserResponse(User(id = newUserId, name = request.name, email = request.email))
         )
     }
 
     delete("/users/{id}") {
         val id = call.parameters["id"]?.toIntOrNull()
         if (id == null) {
-            call.respond(io.ktor.http.HttpStatusCode.BadRequest, mapOf("error" to "Invalid ID"))
+            call.respond(
+                io.ktor.http.HttpStatusCode.BadRequest,
+                ErrorResponse(error = "Invalid ID")
+            )
             return@delete
         }
 
@@ -90,7 +125,10 @@ fun Routing.configureUserRoutes(database: Database) {
         if (rowsDeleted > 0) {
             call.respond(io.ktor.http.HttpStatusCode.NoContent)
         } else {
-            call.respond(io.ktor.http.HttpStatusCode.NotFound, mapOf("error" to "User not found"))
+            call.respond(
+                io.ktor.http.HttpStatusCode.NotFound,
+                ErrorResponse(error = "User not found")
+            )
         }
     }
 }
