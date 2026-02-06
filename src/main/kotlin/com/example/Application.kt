@@ -5,6 +5,7 @@ import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.r2dbc.spi.ConnectionFactories
@@ -14,8 +15,11 @@ import io.r2dbc.pool.ConnectionPool
 import io.r2dbc.pool.ConnectionPoolConfiguration
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactor.mono
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
+import reactor.core.publisher.Flux
 import java.time.Duration
 
 fun main() {
@@ -30,7 +34,9 @@ fun Application.module() {
     val connectionPool = createConnectionPool()
     
     // Initialize database schema
-    initializeDatabase(connectionPool)
+    runBlocking {
+        initializeDatabase(connectionPool)
+    }
     
     // Configure plugins
     install(ContentNegotiation) {
@@ -66,7 +72,8 @@ fun createConnectionPool(): ConnectionPool {
 }
 
 suspend fun initializeDatabase(pool: ConnectionPool) {
-    pool.create().awaitSingle().use { connection ->
+    val connection = pool.create().awaitSingle()
+    try {
         connection.createStatement(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -85,6 +92,8 @@ suspend fun initializeDatabase(pool: ConnectionPool) {
         connection.createStatement(
             "INSERT INTO users (name, email) VALUES ('Jane Smith', 'jane@example.com')"
         ).execute().awaitFirstOrNull()
+    } finally {
+        mono { connection.close() }.awaitFirstOrNull()
     }
 }
 
@@ -109,18 +118,21 @@ fun Routing.configureRoutes(pool: ConnectionPool) {
     get("/users") {
         val users = mutableListOf<User>()
         
-        pool.create().awaitSingle().use { connection ->
+        val connection = pool.create().awaitSingle()
+        try {
             val result = connection.createStatement("SELECT id, name, email FROM users")
                 .execute()
                 .awaitSingle()
             
-            result.map { row, _ ->
+            Flux.from(result.map { row, _ ->
                 User(
                     id = row.get("id", Integer::class.java)?.toInt() ?: 0,
                     name = row.get("name", String::class.java) ?: "",
                     email = row.get("email", String::class.java) ?: ""
                 )
-            }.collectList().awaitSingle().forEach { users.add(it) }
+            }).collectList().awaitSingle().forEach { users.add(it) }
+        } finally {
+            mono { connection.close() }.awaitFirstOrNull()
         }
         
         call.respond(users)
@@ -135,23 +147,28 @@ fun Routing.configureRoutes(pool: ConnectionPool) {
         
         var user: User? = null
         
-        pool.create().awaitSingle().use { connection ->
+        val connection = pool.create().awaitSingle()
+        try {
             val result = connection.createStatement("SELECT id, name, email FROM users WHERE id = $1")
                 .bind("$1", id)
                 .execute()
                 .awaitFirstOrNull()
             
-            result?.map { row, _ ->
-                User(
-                    id = row.get("id", Integer::class.java)?.toInt() ?: 0,
-                    name = row.get("name", String::class.java) ?: "",
-                    email = row.get("email", String::class.java) ?: ""
-                )
-            }?.collectList()?.awaitFirstOrNull()?.firstOrNull()?.let { user = it }
+            if (result != null) {
+                user = Flux.from(result.map { row, _ ->
+                    User(
+                        id = row.get("id", Integer::class.java)?.toInt() ?: 0,
+                        name = row.get("name", String::class.java) ?: "",
+                        email = row.get("email", String::class.java) ?: ""
+                    )
+                }).collectList().awaitSingle().firstOrNull()
+            }
+        } finally {
+            mono { connection.close() }.awaitFirstOrNull()
         }
         
         if (user != null) {
-            call.respond(user!!)
+            call.respond(user)
         } else {
             call.respond(io.ktor.http.HttpStatusCode.NotFound, mapOf("error" to "User not found"))
         }
@@ -159,9 +176,9 @@ fun Routing.configureRoutes(pool: ConnectionPool) {
     
     post("/users") {
         val request = call.receive<CreateUserRequest>()
-        var newUserId: Int? = null
         
-        pool.create().awaitSingle().use { connection ->
+        val connection = pool.create().awaitSingle()
+        val newUserId = try {
             val result = connection.createStatement(
                 "INSERT INTO users (name, email) VALUES ($1, $2)"
             )
@@ -177,15 +194,17 @@ fun Routing.configureRoutes(pool: ConnectionPool) {
                 .execute()
                 .awaitSingle()
             
-            idResult.map { row, _ ->
+            Flux.from(idResult.map { row, _ ->
                 row.get("id", Integer::class.java)?.toInt()
-            }.collectList().awaitSingle().firstOrNull()?.let { newUserId = it }
+            }).collectList().awaitSingle().firstOrNull()
+        } finally {
+            mono { connection.close() }.awaitFirstOrNull()
         }
         
         if (newUserId != null) {
             call.respond(
                 io.ktor.http.HttpStatusCode.Created,
-                User(id = newUserId!!, name = request.name, email = request.email)
+                User(id = newUserId, name = request.name, email = request.email)
             )
         } else {
             call.respond(io.ktor.http.HttpStatusCode.InternalServerError, mapOf("error" to "Failed to create user"))
@@ -199,15 +218,16 @@ fun Routing.configureRoutes(pool: ConnectionPool) {
             return@delete
         }
         
-        var rowsDeleted = 0L
-        
-        pool.create().awaitSingle().use { connection ->
+        val connection = pool.create().awaitSingle()
+        val rowsDeleted = try {
             val result = connection.createStatement("DELETE FROM users WHERE id = $1")
                 .bind("$1", id)
                 .execute()
                 .awaitSingle()
             
-            rowsDeleted = result.rowsUpdated.awaitSingle()
+            result.rowsUpdated.awaitSingle()
+        } finally {
+            mono { connection.close() }.awaitFirstOrNull()
         }
         
         if (rowsDeleted > 0) {
