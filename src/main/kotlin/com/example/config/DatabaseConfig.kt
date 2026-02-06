@@ -5,18 +5,24 @@ import io.r2dbc.pool.ConnectionPoolConfiguration
 import io.r2dbc.spi.ConnectionFactories
 import io.r2dbc.spi.ConnectionFactory
 import io.r2dbc.spi.ConnectionFactoryOptions
-import kotlinx.coroutines.reactive.awaitFirstOrNull
-import kotlinx.coroutines.reactive.awaitSingle
-import kotlinx.coroutines.reactor.mono
+import liquibase.Liquibase
+import liquibase.database.jvm.JdbcConnection
+import liquibase.resource.ClassLoaderResourceAccessor
+import java.sql.DriverManager
 import java.time.Duration
+
+private const val DatabaseName = "testdb"
+private const val DatabaseUser = "sa"
+private const val DatabasePassword = ""
+private const val ChangelogPath = "db/changelog/db.changelog-master.yaml"
 
 fun createConnectionPool(): ConnectionPool {
     val options = ConnectionFactoryOptions.builder()
         .option(ConnectionFactoryOptions.DRIVER, "h2")
         .option(ConnectionFactoryOptions.PROTOCOL, "mem")
-        .option(ConnectionFactoryOptions.DATABASE, "testdb")
-        .option(ConnectionFactoryOptions.USER, "sa")
-        .option(ConnectionFactoryOptions.PASSWORD, "")
+        .option(ConnectionFactoryOptions.DATABASE, DatabaseName)
+        .option(ConnectionFactoryOptions.USER, DatabaseUser)
+        .option(ConnectionFactoryOptions.PASSWORD, DatabasePassword)
         .build()
 
     val connectionFactory: ConnectionFactory = ConnectionFactories.get(options)
@@ -30,28 +36,11 @@ fun createConnectionPool(): ConnectionPool {
     return ConnectionPool(poolConfig)
 }
 
-suspend fun initializeDatabase(pool: ConnectionPool) {
-    val connection = pool.create().awaitSingle()
-    try {
-        connection.createStatement(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) NOT NULL UNIQUE
-            )
-            """
-        ).execute().awaitFirstOrNull()
-
-        // Insert sample data
-        connection.createStatement(
-            "INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com')"
-        ).execute().awaitFirstOrNull()
-
-        connection.createStatement(
-            "INSERT INTO users (name, email) VALUES ('Jane Smith', 'jane@example.com')"
-        ).execute().awaitFirstOrNull()
-    } finally {
-        mono { connection.close() }.awaitFirstOrNull()
+suspend fun initializeDatabase() {
+    val jdbcUrl = "jdbc:h2:mem:$DatabaseName;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+    DriverManager.getConnection(jdbcUrl, DatabaseUser, DatabasePassword).use { connection ->
+        val liquibaseConnection = JdbcConnection(connection)
+        Liquibase(ChangelogPath, ClassLoaderResourceAccessor(), liquibaseConnection)
+            .update("")
     }
 }

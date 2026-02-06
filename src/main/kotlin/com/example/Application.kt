@@ -25,7 +25,7 @@ fun Application.module() {
     
     // Initialize database schema
     runBlocking {
-        initializeDatabase(connectionPool)
+        initializeDatabase()
     }
     
     // Configure plugins
