@@ -9,7 +9,6 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
 fun main() {
@@ -24,9 +23,7 @@ fun Application.module() {
     val connectionPool = createConnectionPool()
     
     // Initialize database schema
-    runBlocking {
-        initializeDatabase(connectionPool)
-    }
+    initializeDatabase()
     
     // Configure plugins
     install(ContentNegotiation) {
