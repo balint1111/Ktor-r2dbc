@@ -93,7 +93,10 @@ Sample data is automatically inserted on startup.
 │   └── main/
 │       ├── kotlin/
 │       │   └── com/example/
-│       │       └── Application.kt  # Main application file
+│       │       ├── Application.kt  # Main application file
+│       │       ├── config/         # Database configuration
+│       │       ├── model/          # Data models
+│       │       └── routes/         # Route definitions
 │       └── resources/
 │           ├── application.conf    # Ktor configuration
 │           └── logback.xml        # Logging configuration
