@@ -9,6 +9,7 @@ import liquibase.Liquibase
 import liquibase.database.DatabaseFactory
 import liquibase.database.jvm.JdbcConnection
 import liquibase.resource.ClassLoaderResourceAccessor
+import org.jetbrains.exposed.sql.Database
 import java.sql.DriverManager
 import java.time.Duration
 
@@ -30,6 +31,10 @@ fun createConnectionPool(): ConnectionPool {
         .build()
 
     return ConnectionPool(poolConfig)
+}
+
+fun createDatabase(pool: ConnectionPool): Database {
+    return Database.connect(pool)
 }
 
 fun initializeDatabase() {

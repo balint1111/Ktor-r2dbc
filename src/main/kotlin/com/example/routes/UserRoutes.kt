@@ -2,39 +2,33 @@ package com.example.routes
 
 import com.example.model.CreateUserRequest
 import com.example.model.User
+import com.example.model.Users
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.r2dbc.pool.ConnectionPool
-import kotlinx.coroutines.reactive.awaitFirstOrNull
-import kotlinx.coroutines.reactive.awaitSingle
-import kotlinx.coroutines.reactor.mono
-import reactor.core.publisher.Flux
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.insertAndGetId
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 
-fun Routing.configureUserRoutes(pool: ConnectionPool) {
+fun Routing.configureUserRoutes(database: Database) {
     get("/") {
         call.respondText("Ktor R2DBC with H2 In-Memory Database")
     }
 
     get("/users") {
-        val users = mutableListOf<User>()
-
-        val connection = pool.create().awaitSingle()
-        try {
-            val result = connection.createStatement("SELECT id, name, email FROM users")
-                .execute()
-                .awaitSingle()
-
-            Flux.from(result.map { row, _ ->
+        val users = newSuspendedTransaction(db = database) {
+            Users.selectAll().map { row ->
                 User(
-                    id = row.get("id", Integer::class.java)?.toInt() ?: 0,
-                    name = row.get("name", String::class.java) ?: "",
-                    email = row.get("email", String::class.java) ?: ""
+                    id = row[Users.id].value,
+                    name = row[Users.name],
+                    email = row[Users.email]
                 )
-            }).collectList().awaitSingle().forEach { users.add(it) }
-        } finally {
-            mono { connection.close() }.awaitFirstOrNull()
+            }
         }
 
         call.respond(users)
@@ -47,26 +41,16 @@ fun Routing.configureUserRoutes(pool: ConnectionPool) {
             return@get
         }
 
-        var user: User? = null
-
-        val connection = pool.create().awaitSingle()
-        try {
-            val result = connection.createStatement("SELECT id, name, email FROM users WHERE id = $1")
-                .bind("$1", id)
-                .execute()
-                .awaitFirstOrNull()
-
-            if (result != null) {
-                user = Flux.from(result.map { row, _ ->
+        val user = newSuspendedTransaction(db = database) {
+            Users.select { Users.id eq id }
+                .map { row ->
                     User(
-                        id = row.get("id", Integer::class.java)?.toInt() ?: 0,
-                        name = row.get("name", String::class.java) ?: "",
-                        email = row.get("email", String::class.java) ?: ""
+                        id = row[Users.id].value,
+                        name = row[Users.name],
+                        email = row[Users.email]
                     )
-                }).collectList().awaitSingle().firstOrNull()
-            }
-        } finally {
-            mono { connection.close() }.awaitFirstOrNull()
+                }
+                .singleOrNull()
         }
 
         if (user != null) {
@@ -79,41 +63,17 @@ fun Routing.configureUserRoutes(pool: ConnectionPool) {
     post("/users") {
         val request = call.receive<CreateUserRequest>()
 
-        val connection = pool.create().awaitSingle()
-        val newUserId = try {
-            val result = connection.createStatement(
-                "INSERT INTO users (name, email) VALUES ($1, $2)"
-            )
-                .bind("$1", request.name)
-                .bind("$2", request.email)
-                .execute()
-                .awaitSingle()
-
-            result.rowsUpdated.awaitFirstOrNull()
-
-            // Get the newly created user ID
-            val idResult = connection.createStatement("SELECT MAX(id) as id FROM users")
-                .execute()
-                .awaitSingle()
-
-            Flux.from(idResult.map { row, _ ->
-                row.get("id", Integer::class.java)?.toInt()
-            }).collectList().awaitSingle().firstOrNull()
-        } finally {
-            mono { connection.close() }.awaitFirstOrNull()
+        val newUserId = newSuspendedTransaction(db = database) {
+            Users.insertAndGetId { row ->
+                row[name] = request.name
+                row[email] = request.email
+            }.value
         }
 
-        if (newUserId != null) {
-            call.respond(
-                io.ktor.http.HttpStatusCode.Created,
-                User(id = newUserId, name = request.name, email = request.email)
-            )
-        } else {
-            call.respond(
-                io.ktor.http.HttpStatusCode.InternalServerError,
-                mapOf("error" to "Failed to create user")
-            )
-        }
+        call.respond(
+            io.ktor.http.HttpStatusCode.Created,
+            User(id = newUserId, name = request.name, email = request.email)
+        )
     }
 
     delete("/users/{id}") {
@@ -123,16 +83,8 @@ fun Routing.configureUserRoutes(pool: ConnectionPool) {
             return@delete
         }
 
-        val connection = pool.create().awaitSingle()
-        val rowsDeleted = try {
-            val result = connection.createStatement("DELETE FROM users WHERE id = $1")
-                .bind("$1", id)
-                .execute()
-                .awaitSingle()
-
-            result.rowsUpdated.awaitSingle()
-        } finally {
-            mono { connection.close() }.awaitFirstOrNull()
+        val rowsDeleted = newSuspendedTransaction(db = database) {
+            Users.deleteWhere { Users.id eq id }
         }
 
         if (rowsDeleted > 0) {

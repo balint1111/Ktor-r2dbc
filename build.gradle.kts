@@ -26,6 +26,8 @@ dependencies {
     implementation("io.r2dbc:r2dbc-h2:1.0.0.RELEASE")
     implementation("io.r2dbc:r2dbc-pool:1.0.1.RELEASE")
     implementation("io.r2dbc:r2dbc-spi:1.0.0.RELEASE")
+    implementation("org.jetbrains.exposed:exposed-core:0.50.1")
+    implementation("org.jetbrains.exposed:exposed-r2dbc:0.50.1")
     implementation("org.liquibase:liquibase-core:4.26.0")
     implementation("com.h2database:h2:2.2.224")
     

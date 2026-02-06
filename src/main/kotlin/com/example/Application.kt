@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.config.createConnectionPool
+import com.example.config.createDatabase
 import com.example.config.initializeDatabase
 import com.example.routes.configureUserRoutes
 import io.ktor.serialization.kotlinx.json.*
@@ -21,6 +22,7 @@ fun Application.module() {
     
     // Initialize R2DBC connection pool with H2 in-memory database
     val connectionPool = createConnectionPool()
+    val database = createDatabase(connectionPool)
     
     // Initialize database schema
     initializeDatabase()
@@ -32,7 +34,7 @@ fun Application.module() {
     
     // Configure routing
     routing {
-        configureUserRoutes(connectionPool)
+        configureUserRoutes(database)
     }
     
     logger.info("Application started successfully with R2DBC H2 in-memory database")
