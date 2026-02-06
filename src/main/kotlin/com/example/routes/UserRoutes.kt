@@ -5,7 +5,7 @@ import com.example.model.ErrorResponse
 import com.example.model.User
 import com.example.model.UserResponse
 import com.example.model.Users
-import com.example.model.UsersPageResponse
+import com.example.model.PageResponse
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -51,8 +51,8 @@ fun Routing.configureUserRoutes(database: Database) {
         }
 
         call.respond(
-            UsersPageResponse(
-                users = users,
+            PageResponse(
+                items = users,
                 page = page,
                 size = size,
                 total = total

@@ -21,8 +21,8 @@ data class UserResponse(
 )
 
 @Serializable
-data class UsersPageResponse(
-    val users: List<User>,
+data class PageResponse<T>(
+    val items: List<T>,
     val page: Int,
     val size: Int,
     val total: Long
