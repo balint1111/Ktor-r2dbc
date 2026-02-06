@@ -62,7 +62,7 @@ DELETE http://localhost:8080/users/{id}
 
 ## Database Schema
 
-The application automatically creates a `users` table with the following structure:
+The application uses Liquibase to create a `users` table with the following structure:
 
 ```sql
 CREATE TABLE users (
@@ -82,6 +82,7 @@ Sample data is automatically inserted on startup.
 - **R2DBC Pool**: 1.0.1.RELEASE
 - **Kotlin Serialization**: 1.6.2
 - **Kotlinx Coroutines**: 1.7.3
+- **Liquibase**: 4.27.0
 
 ## Project Structure
 
@@ -93,9 +94,14 @@ Sample data is automatically inserted on startup.
 │   └── main/
 │       ├── kotlin/
 │       │   └── com/example/
-│       │       └── Application.kt  # Main application file
+│       │       ├── Application.kt  # Main application file
+│       │       ├── config/         # Database configuration
+│       │       ├── model/          # Data models
+│       │       └── routes/         # Route definitions
 │       └── resources/
 │           ├── application.conf    # Ktor configuration
+│           ├── db/
+│           │   └── changelog/       # Liquibase changelogs
 │           └── logback.xml        # Logging configuration
 └── README.md
 ```
