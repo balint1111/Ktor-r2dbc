@@ -34,6 +34,20 @@ Ensure GraalVM is installed and `native-image` is available, then run:
 
 The native executable will be generated in `build/native/nativeCompile/`.
 
+### Build a GraalVM Native Image (Docker)
+
+This repository ships with a Dockerfile optimized for BuildKit cache reuse.
+
+```bash
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.native -t ktor-r2dbc-native .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8080:8080 ktor-r2dbc-native
+```
+
 ### Run the Application
 
 ```bash
