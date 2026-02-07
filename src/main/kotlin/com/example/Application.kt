@@ -44,7 +44,7 @@ fun Application.module() {
 
     // Configure routing
     routing {
-        val userService by inject<UserService>()
+        val userService: UserService by dependencies
         openAPI(path = "openapi", swaggerFile = "openapi/documentation.yaml")
         swaggerUI(path = "swagger", swaggerFile = "openapi/documentation.yaml")
         configureUserRoutes(userService)
