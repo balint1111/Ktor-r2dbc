@@ -10,8 +10,8 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import io.ktor.server.di.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.di.dependencies
 import io.ktor.server.plugins.openapi.*
 import io.ktor.server.plugins.swagger.*
 import io.ktor.server.routing.*
@@ -32,9 +32,9 @@ fun Application.module() {
     // Initialize database schema
     initializeDatabase()
 
-    install(DI) {
-        bindSingleton { UserRepository(database) }
-        bindSingleton { UserService(instance()) }
+    dependencies {
+        provide<UserRepository> { UserRepository(database) }
+        provide<UserService> { UserService(resolve<UserRepository>()) }
     }
 
     // Configure plugins
