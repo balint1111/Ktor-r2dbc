@@ -10,8 +10,8 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.openapi.*
+import io.ktor.server.plugins.swagger.*
 import io.ktor.server.routing.*
-import io.ktor.server.swagger.*
 import org.slf4j.LoggerFactory
 
 fun main() {

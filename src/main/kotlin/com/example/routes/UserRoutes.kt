@@ -10,16 +10,18 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.deleteWhere
-import org.jetbrains.exposed.sql.insertAndGetId
-import org.jetbrains.exposed.sql.limit
-import org.jetbrains.exposed.sql.select
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.singleOrNull
+import kotlinx.coroutines.flow.toList
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.r2dbc.R2dbcDatabase
+import org.jetbrains.exposed.v1.r2dbc.deleteWhere
+import org.jetbrains.exposed.v1.r2dbc.insertAndGetId
+import org.jetbrains.exposed.v1.r2dbc.select
+import org.jetbrains.exposed.v1.r2dbc.selectAll
+import org.jetbrains.exposed.v1.r2dbc.transactions.suspendTransaction
 
-fun Routing.configureUserRoutes(database: Database) {
+fun Routing.configureUserRoutes(database: R2dbcDatabase) {
     get("/") {
         call.respondText("Ktor R2DBC with H2 In-Memory Database")
     }
@@ -27,6 +29,7 @@ fun Routing.configureUserRoutes(database: Database) {
     get("/users") {
         val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
         val size = call.request.queryParameters["size"]?.toIntOrNull() ?: 20
+        println("page: $page, size: $size")
         if (page < 1 || size < 1) {
             call.respond(
                 io.ktor.http.HttpStatusCode.BadRequest,
@@ -36,10 +39,11 @@ fun Routing.configureUserRoutes(database: Database) {
         }
 
         val offset = (page - 1L) * size
-        val (users, total) = newSuspendedTransaction(db = database) {
+        val (users, total) = suspendTransaction(db = database) {
             val totalCount = Users.selectAll().count()
             val pageUsers = Users.selectAll()
-                .limit(size, offset)
+                .limit(size)
+                .offset(offset)
                 .map { row ->
                     User(
                         id = row[Users.id].value,
@@ -52,7 +56,7 @@ fun Routing.configureUserRoutes(database: Database) {
 
         call.respond(
             PageResponse(
-                items = users,
+                items = users.toList(),
                 page = page,
                 size = size,
                 total = total
@@ -70,8 +74,9 @@ fun Routing.configureUserRoutes(database: Database) {
             return@get
         }
 
-        val user = newSuspendedTransaction(db = database) {
-            Users.select { Users.id eq id }
+        val user = suspendTransaction(db = database) {
+            Users.selectAll()
+                .where{ Users.id eq id }
                 .map { row ->
                     User(
                         id = row[Users.id].value,
@@ -95,7 +100,7 @@ fun Routing.configureUserRoutes(database: Database) {
     post("/users") {
         val request = call.receive<CreateUserRequest>()
 
-        val newUserId = newSuspendedTransaction(db = database) {
+        val newUserId = suspendTransaction(db = database) {
             Users.insertAndGetId { row ->
                 row[name] = request.name
                 row[email] = request.email
@@ -118,7 +123,7 @@ fun Routing.configureUserRoutes(database: Database) {
             return@delete
         }
 
-        val rowsDeleted = newSuspendedTransaction(db = database) {
+        val rowsDeleted = suspendTransaction(db = database) {
             Users.deleteWhere { Users.id eq id }
         }
 

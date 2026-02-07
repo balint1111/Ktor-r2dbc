@@ -9,7 +9,8 @@ import liquibase.Liquibase
 import liquibase.database.DatabaseFactory
 import liquibase.database.jvm.JdbcConnection
 import liquibase.resource.ClassLoaderResourceAccessor
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.r2dbc.R2dbcDatabase
+import org.jetbrains.exposed.v1.r2dbc.R2dbcDatabaseConfig
 import java.sql.DriverManager
 import java.time.Duration
 
@@ -33,8 +34,13 @@ fun createConnectionPool(): ConnectionPool {
     return ConnectionPool(poolConfig)
 }
 
-fun createDatabase(pool: ConnectionPool): Database {
-    return Database.connect(pool)
+fun createDatabase(pool: ConnectionPool): R2dbcDatabase {
+    return R2dbcDatabase.connect(
+        pool,
+        databaseConfig = R2dbcDatabaseConfig {
+            explicitDialect = org.jetbrains.exposed.v1.core.vendors.H2Dialect()
+        }
+    )
 }
 
 fun initializeDatabase() {
