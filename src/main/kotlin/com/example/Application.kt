@@ -10,6 +10,7 @@ import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import io.ktor.server.di.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.openapi.*
 import io.ktor.server.plugins.swagger.*
@@ -31,8 +32,10 @@ fun Application.module() {
     // Initialize database schema
     initializeDatabase()
 
-    val userRepository = UserRepository(database)
-    val userService = UserService(userRepository)
+    install(DI) {
+        bindSingleton { UserRepository(database) }
+        bindSingleton { UserService(instance()) }
+    }
 
     // Configure plugins
     install(ContentNegotiation) {
@@ -41,6 +44,7 @@ fun Application.module() {
 
     // Configure routing
     routing {
+        val userService by inject<UserService>()
         openAPI(path = "openapi", swaggerFile = "openapi/documentation.yaml")
         swaggerUI(path = "swagger", swaggerFile = "openapi/documentation.yaml")
         configureUserRoutes(userService)
