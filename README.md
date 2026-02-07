@@ -24,6 +24,16 @@ A Ktor application demonstrating reactive database access using R2DBC with an H2
 ./gradlew build
 ```
 
+### Build a GraalVM Native Image
+
+Ensure GraalVM is installed and `native-image` is available, then run:
+
+```bash
+./gradlew nativeCompile
+```
+
+The native executable will be generated in `build/native/nativeCompile/`.
+
 ### Run the Application
 
 ```bash

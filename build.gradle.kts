@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.2.20"
     kotlin("plugin.serialization") version "2.2.20"
+    id("org.graalvm.buildtools.native") version "0.10.4"
     application
 }
 
@@ -51,4 +52,14 @@ dependencies {
 
 kotlin {
     jvmToolchain(24)
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("ktor-r2dbc")
+            buildArgs.add("--report-unsupported-elements-at-runtime")
+        }
+    }
+    resources.autodetect()
 }
