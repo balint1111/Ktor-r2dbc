@@ -2,26 +2,15 @@ package com.example.routes
 
 import com.example.model.CreateUserRequest
 import com.example.model.ErrorResponse
-import com.example.model.User
-import com.example.model.UserResponse
-import com.example.model.Users
 import com.example.model.PageResponse
+import com.example.model.UserResponse
+import com.example.service.UserService
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.singleOrNull
-import kotlinx.coroutines.flow.toList
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.r2dbc.R2dbcDatabase
-import org.jetbrains.exposed.v1.r2dbc.deleteWhere
-import org.jetbrains.exposed.v1.r2dbc.insertAndGetId
-import org.jetbrains.exposed.v1.r2dbc.select
-import org.jetbrains.exposed.v1.r2dbc.selectAll
-import org.jetbrains.exposed.v1.r2dbc.transactions.suspendTransaction
 
-fun Routing.configureUserRoutes(database: R2dbcDatabase) {
+fun Routing.configureUserRoutes(userService: UserService) {
     get("/") {
         call.respondText("Ktor R2DBC with H2 In-Memory Database")
     }
@@ -29,7 +18,6 @@ fun Routing.configureUserRoutes(database: R2dbcDatabase) {
     get("/users") {
         val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
         val size = call.request.queryParameters["size"]?.toIntOrNull() ?: 20
-        println("page: $page, size: $size")
         if (page < 1 || size < 1) {
             call.respond(
                 io.ktor.http.HttpStatusCode.BadRequest,
@@ -38,25 +26,11 @@ fun Routing.configureUserRoutes(database: R2dbcDatabase) {
             return@get
         }
 
-        val offset = (page - 1L) * size
-        val (users, total) = suspendTransaction(db = database) {
-            val totalCount = Users.selectAll().count()
-            val pageUsers = Users.selectAll()
-                .limit(size)
-                .offset(offset)
-                .map { row ->
-                    User(
-                        id = row[Users.id].value,
-                        name = row[Users.name],
-                        email = row[Users.email]
-                    )
-                }
-            pageUsers to totalCount
-        }
+        val (users, total) = userService.getUsers(page, size)
 
         call.respond(
             PageResponse(
-                items = users.toList(),
+                items = users,
                 page = page,
                 size = size,
                 total = total
@@ -74,18 +48,7 @@ fun Routing.configureUserRoutes(database: R2dbcDatabase) {
             return@get
         }
 
-        val user = suspendTransaction(db = database) {
-            Users.selectAll()
-                .where{ Users.id eq id }
-                .map { row ->
-                    User(
-                        id = row[Users.id].value,
-                        name = row[Users.name],
-                        email = row[Users.email]
-                    )
-                }
-                .singleOrNull()
-        }
+        val user = userService.getUserById(id)
 
         if (user != null) {
             call.respond(UserResponse(user))
@@ -100,16 +63,11 @@ fun Routing.configureUserRoutes(database: R2dbcDatabase) {
     post("/users") {
         val request = call.receive<CreateUserRequest>()
 
-        val newUserId = suspendTransaction(db = database) {
-            Users.insertAndGetId { row ->
-                row[name] = request.name
-                row[email] = request.email
-            }.value
-        }
+        val newUser = userService.createUser(request)
 
         call.respond(
             io.ktor.http.HttpStatusCode.Created,
-            UserResponse(User(id = newUserId, name = request.name, email = request.email))
+            UserResponse(newUser)
         )
     }
 
@@ -123,11 +81,9 @@ fun Routing.configureUserRoutes(database: R2dbcDatabase) {
             return@delete
         }
 
-        val rowsDeleted = suspendTransaction(db = database) {
-            Users.deleteWhere { Users.id eq id }
-        }
+        val deleted = userService.deleteUser(id)
 
-        if (rowsDeleted > 0) {
+        if (deleted) {
             call.respond(io.ktor.http.HttpStatusCode.NoContent)
         } else {
             call.respond(
