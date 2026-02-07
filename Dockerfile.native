@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1.7
+FROM ghcr.io/graalvm/graalvm-community:24.0.2 AS build
+
+RUN microdnf install -y gzip tar && microdnf clean all
+RUN gu install native-image
+
+WORKDIR /app
+ENV GRADLE_USER_HOME=/home/gradle/.gradle
+
+COPY gradle gradle
+COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
+
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    ./gradlew --no-daemon dependencies
+
+COPY src src
+
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    ./gradlew --no-daemon nativeCompile
+
+FROM debian:bookworm-slim
+
+RUN useradd -m appuser
+WORKDIR /app
+COPY --from=build /app/build/native/nativeCompile/ktor-r2dbc /app/ktor-r2dbc
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8080
+ENTRYPOINT ["/app/ktor-r2dbc"]
